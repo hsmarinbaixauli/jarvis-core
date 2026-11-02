@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+# Installable so private extensions and playbooks can depend on it (`pip install -e .`). Runtime
+# dependencies stay pinned in requirements.txt, which also installs callgate from packages/.
+[project]
+name = "jarvis-core"
+version = "0.1.0"
+description = "Personal AI assistant core: Telegram, local web chat, email, calendar, playbooks and extensions."
+requires-python = ">=3.12"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.setuptools.package-data]
+jarvis = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages/callgate/tests"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["tests/fixtures"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Spanish text uses typographic characters on purpose

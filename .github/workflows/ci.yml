@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.16.9
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+      - name: Windows scripts parse and autostart round-trip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem scripts/windows/*.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | Format-List; throw "Syntax errors in $($f.Name)" }
+          }
+          ./scripts/windows/autostart.ps1 install -NoStart -SkipChecks
+          $task = Get-ScheduledTask -TaskName Jarvis
+          if ($task.Actions[0].Execute -ne "wscript.exe") { throw "Unexpected action: $($task.Actions[0].Execute)" }
+          if ($task.Triggers[0].CimClass.CimClassName -ne "MSFT_TaskLogonTrigger") { throw "Not a logon trigger" }
+          ./scripts/windows/autostart.ps1 uninstall
+          if (Get-ScheduledTask -TaskName Jarvis -ErrorAction SilentlyContinue) { throw "Task still registered" }
+
+      - name: Global scan hook installer (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Check-Settings($dir) {
+            $path = Join-Path $dir "settings.json"
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            if ($bytes[0] -eq 0xEF) { throw "settings.json has a BOM" }
+            python -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" $path | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "settings.json is not valid JSON" }
+            return (Get-Content -Raw $path | ConvertFrom-Json)
+          }
+          $fresh = Join-Path $env:RUNNER_TEMP "claude-fresh"
+          ./scripts/windows/install-scan-hook.ps1 -ClaudeHome $fresh
+          $s = Check-Settings $fresh
+          if (@($s.hooks.PreToolUse).Count -ne 1) { throw "Expected one PreToolUse entry" }
+          if (@($s.hooks.PreToolUse[0].hooks).Count -ne 1) { throw "hooks must be a list" }
+
+          $home2 = Join-Path $env:RUNNER_TEMP "claude-existing"
+          New-Item -ItemType Directory -Force -Path $home2 | Out-Null
+          $before = '{"model": "opus", "permissions": {"allow": ["Read"]}, "hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo hi"}]}]}}'
+          [System.IO.File]::WriteAllText((Join-Path $home2 "settings.json"), $before)
+          ./scripts/windows/install-scan-hook.ps1 -ClaudeHome $home2
+          ./scripts/windows/install-scan-hook.ps1 -ClaudeHome $home2
+          $s = Check-Settings $home2
+          if ($s.model -ne "opus" -or @($s.permissions.allow)[0] -ne "Read") { throw "Other settings were lost" }
+          $entries = @($s.hooks.PreToolUse)
+          if ($entries.Count -ne 2) { throw "Expected 2 PreToolUse entries, got $($entries.Count)" }
+          if ($entries[0].matcher -ne "Edit") { throw "Existing hook was lost" }
+          if ($entries[1].matcher -ne "Bash|PowerShell" -or $entries[1].hooks[0].timeout -ne 600) { throw "Bad entry" }
+          if (-not (Test-Path (Join-Path $home2 "settings.json.bak"))) { throw "No backup" }
+
+          [System.IO.File]::WriteAllText((Join-Path $home2 "settings.json"), "{ not json")
+          $failed = $false
+          try { ./scripts/windows/install-scan-hook.ps1 -ClaudeHome $home2 } catch { $failed = $true }
+          if (-not $failed) { throw "Invalid settings.json must stop the installer" }
+          if ((Get-Content -Raw (Join-Path $home2 "settings.json")) -ne "{ not json") { throw "Invalid settings.json was touched" }
+
+          $hook = Join-Path $fresh "hooks/scan_before_install.py"
+          $out = '{"tool_input": {"command": "ls"}}' | python $hook
+          if ($LASTEXITCODE -ne 0 -or $out) { throw "Hook should stay silent on ls: $out" }
+          $out = '{"tool_input": {"command": "git clone https://github.com/example/repo"}}' | python $hook
+          if ($LASTEXITCODE -ne 0 -or "$out" -notmatch '"permissionDecision": "deny"') { throw "Hook should deny without SkillSpector: $out" }
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file is valid
+        run: docker compose config -q
+      - name: Build core, browser and login images
+        run: docker compose --profile login build
+      - name: Core image runs hardened, keeps secrets private and refuses to start without a key
+        run: |
+          set -eu
+          mkdir -p ci/config ci/work ci/memory && chmod 777 ci/work ci/memory
+          printf 'data_dir: /data\nallowed_dirs: [/work]\nbrowser: {enabled: false}\ngoogle: {enabled: false}\n' > ci/config/jarvis.yaml
+          H="--read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp -v ci-data:/data -v ci-secrets:/secrets -v $PWD/ci/work:/work -v $PWD/ci/memory:/memory -v $PWD/ci/config:/config:ro"
+          docker run --rm $H jarvis-core:local tools | grep -q "mcp__google__gmail_send_email"
+          if docker run --rm $H jarvis-core:local run; then echo "started without an API key"; exit 1; fi
+          printf 'sk-ant-ci-not-a-real-key-0000\n' | docker run --rm -i $H jarvis-core:local secrets set ANTHROPIC_API_KEY
+          docker run --rm $H --entrypoint sh jarvis-core:local -c '
+            test "$(id -u)" = 10001
+            test "$(stat -c %a /secrets/jarvis.ANTHROPIC_API_KEY)" = 600
+            grep -q "CapEff:\s*0000000000000000" /proc/self/status
+            ! touch /app/x 2>/dev/null'
+      - name: Browser image serves Playwright MCP only to the expected host
+        run: |
+          set -eu
+          docker run -d --name pw --read-only --cap-drop ALL --tmpfs /tmp --shm-size 1g -p 127.0.0.1:8931:8931 jarvis-browser:local
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8931/ && break; sleep 1; done
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+          ok=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8931/mcp -H 'Host: browser:8931' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init")
+          bad=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8931/mcp -H 'Host: evil:8931' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init")
+          docker logs pw
+          test "$ok" = 200 && test "$bad" = 403
+
+  scan-hook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install hook blocks the malicious fixture and passes the benign one (real pinned SkillSpector)
+        run: |
+          set -eu
+          # v2.13.2, the version the hook tells you to install. Bump deliberately.
+          pip install "skillspector @ git+https://github.com/NVIDIA/SkillSpector.git@abd82935b67f765a9541013c0866c6349251dcdf"
+          python - <<'PY'
+          import importlib.util, shutil
+          spec = importlib.util.spec_from_file_location("hook", ".claude/hooks/scan_before_install.py")
+          hook = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(hook)
+          exe = shutil.which("skillspector")
+          bad = hook.scan("tests/fixtures/skillspector/malicious", exe)
+          good = hook.scan("tests/fixtures/skillspector/benign", exe)
+          print("malicious:", bad); print("benign:", good)
+          assert bad[0] == "BLOCK", "the malicious fixture must be blocked"
+          assert good[0] == "SAFE", "the benign fixture must pass"
+          PY

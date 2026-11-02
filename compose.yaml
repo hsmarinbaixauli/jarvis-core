@@ -1,0 +1,80 @@
+# Jarvis aislado en tu PC: tres contenedores, cada uno con lo mínimo.
+#   jarvis   → el núcleo, su base de datos y sus claves. Sin navegador.
+#   browser  → Chromium (Playwright MCP). Solo el perfil del navegador: ni claves ni base de datos.
+#   login    → (a demanda) el mismo perfil en una ventana noVNC para iniciar sesión a mano.
+# Guía paso a paso: docs/DOCKER.md
+name: jarvis
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  networks: [jarvis]
+
+services:
+  jarvis:
+    <<: *hardened
+    build:
+      context: .
+      dockerfile: docker/jarvis.Dockerfile
+    image: jarvis-core:local
+    depends_on: [browser]
+    environment:
+      TZ: ${JARVIS_TZ:-Europe/Madrid}
+    # Only on this PC's loopback. From the phone: Tailscale, never a public port.
+    # Same port on both sides: the web app checks the Host header against it.
+    ports: ["127.0.0.1:8765:8765"]
+    tmpfs: ["/tmp:size=256m"]
+    volumes:
+      - jarvis-data:/data
+      - jarvis-secrets:/secrets
+      - ${JARVIS_WORK_DIR:-./work}:/work
+      - ${JARVIS_MEMORY_DIR:-./memory}:/memory
+      - ${JARVIS_VAULT_DIR:-./vault}:/vault
+      - ./docker/config:/config:ro
+    mem_limit: 2g
+    pids_limit: 512
+
+  browser:
+    <<: *hardened
+    build:
+      context: docker
+      dockerfile: browser.Dockerfile
+      target: browser
+    image: jarvis-browser:local
+    tmpfs: ["/tmp:size=512m"]
+    shm_size: 1gb
+    volumes:
+      - browser-profile:/profile
+      - browser-output:/output
+    mem_limit: 2g
+    pids_limit: 1024
+
+  login:
+    profiles: [login]
+    build:
+      context: docker
+      dockerfile: browser.Dockerfile
+      target: login
+    image: jarvis-browser-login:local
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=512m"]
+    shm_size: 1gb
+    ports: ["127.0.0.1:6080:6080"]
+    environment:
+      LOGIN_URL: ${LOGIN_URL:-https://accounts.google.com}
+    volumes:
+      - browser-profile:/profile
+    restart: "no"
+    networks: [jarvis]
+
+networks:
+  jarvis: {}
+
+volumes:
+  jarvis-data: {}
+  jarvis-secrets: {}
+  browser-profile: {}
+  browser-output: {}

@@ -1,0 +1,21 @@
+# Tareas programadas de Jarvis. Copia este archivo como tasks.yaml y ajústalo.
+# cron: minuto hora día_del_mes mes día_de_la_semana   (0 o 7 = domingo, 1 = lunes … 6 = sábado)
+# notify: always (siempre te escribe), if_relevant (solo si hay algo que contar), never
+# budget_usd: tope de gasto de cada ejecución (opcional; si no, el de jarvis.yaml)
+tasks:
+  - id: resumen-matinal
+    cron: "45 7 * * 1-5"
+    prompt: >
+      Prepárame el resumen del día: eventos de hoy en el calendario, correos sin leer importantes
+      y mis pendientes. Breve, en viñetas.
+    notify: always
+    budget_usd: 0.5
+
+  - id: cierre-semanal
+    cron: "13 18 * * 5"
+    prompt: >
+      Haz el cierre de la semana: pendientes abiertos, correos sin contestar de clientes y lo que tengo
+      el lunes en el calendario.
+    notify: if_relevant
+    budget_usd: 0.5
+    enabled: false
