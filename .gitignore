@@ -1,0 +1,49 @@
+# Secrets and local config — never commit
+.env
+jarvis.yaml
+tasks.yaml
+.env.*
+!.env.example
+credentials/
+*.token.json
+*_token.json
+
+# Local runtime data
+data/
+memory/
+logs/
+*.db
+*.db-journal
+*.sqlite3
+browser-profile/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+venv312/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# Docker mode: local config and folders
+docker/config/jarvis.yaml
+docker/config/tasks.yaml
+docker/config/*.json
+work/
+vault/

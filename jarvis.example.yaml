@@ -1,0 +1,134 @@
+# Configuración de Jarvis. NO pongas aquí claves ni contraseñas:
+# las claves se guardan con  python -m jarvis secrets set NOMBRE
+#
+# Copia este archivo como jarvis.yaml (en la misma carpeta) y ajústalo.
+# Las rutas relativas se cuentan desde esta carpeta.
+
+# Para quién trabaja Jarvis. Va en los prompts y mensajes; tus datos personales viven aquí, no en el código.
+owner:
+  name: Tu nombre
+  about: a qué te dedicas, en una línea
+
+# Dónde guarda Jarvis su base de datos, logs y el enlace del chat web.
+data_dir: data
+
+# Carpetas donde Jarvis puede leer y escribir libremente. La primera es su carpeta de trabajo.
+# Fuera de estas carpetas no puede tocar nada.
+allowed_dirs:
+  - ~/JarvisTrabajo
+
+# Dominios que Jarvis puede consultar sin avisarte. Cualquier otro te lo notifica,
+# y si antes ha leído contenido externo (una web, un correo) te pide aprobación.
+trusted_domains:
+  - github.com
+  - wikipedia.org
+
+# Modelos de Claude.
+model: claude-sonnet-5-5
+fast_model: claude-haiku-5-5
+
+# Modelo pequeño para trabajos sencillos y a veces sensibles: clasificar correos y revisar si un contenido
+# externo trae instrucciones para Jarvis. Hoy es Claude; más adelante podrá ser un modelo local (Ollama)
+# para que ese contenido no salga de tu PC. Si no pones model, usa fast_model.
+small_model:
+  provider: claude
+  # model: claude-haiku-5-5
+
+# Si un correo, web o documento trae instrucciones para Jarvis, te avisa por Telegram (y Jarvis no las sigue).
+#   confirm   → reglas + el modelo pequeño confirma, para no avisarte en falso (recomendado)
+#   heuristic → solo reglas (gratis, algún falso aviso más)
+#   off       → no avisa (Jarvis sigue sin obedecer ese contenido)
+injection_check: confirm
+
+# Límites de gasto en dólares. Si una tarea o el día los supera, Jarvis para y te avisa.
+budget:
+  task_usd: 1.0
+  daily_usd: 10.0
+
+# Cola de tareas: cuántas cosas hace Jarvis a la vez (cada una es una sesión con el modelo).
+# El resto espera en cola; /cola en Telegram para verla.
+queue:
+  max_parallel: 2
+
+# Minutos que Jarvis espera tu ✅ en Telegram antes de cancelar una acción.
+approval_timeout_minutes: 10
+
+telegram:
+  # Tu chat id. Arranca Jarvis, escríbele cualquier cosa a tu bot y te dirá el número.
+  allowed_chat_id: null
+
+web:
+  port: 8765
+
+# Navegador ("ojos"): Google Chrome con un perfil propio de Jarvis donde TÚ inicias sesión a mano
+# (python -m jarvis browser login). Necesita Node.js y Chrome instalados.
+browser:
+  enabled: true
+  channel: chrome      # chrome (recomendado) o msedge
+  headless: true       # false para ver la ventana mientras Jarvis navega
+  # Credenciales que Jarvis puede teclear, y SOLO en estos dominios. Guarda cada valor con
+  #   python -m jarvis secrets set NOMBRE
+  # Jarvis nunca ve el valor: escribe el nombre y el navegador pone el valor real.
+  credentials: {}
+#   JARVIS_EMAIL: [tienda.es, otra-web.com]
+#   TIENDA_PASSWORD: [tienda.es]
+  # Webs donde Jarvis puede hacer clic y escribir con solo avisarte. En cualquier otra (también en las
+  # de trusted_domains) cada clic espera tu ✅. No pongas aquí webs donde un clic gasta dinero o publica.
+  interact_domains: []
+
+# GitHub: crea un token fine-grained limitado a estos repos y guárdalo con
+#   python -m jarvis secrets set GITHUB_TOKEN
+github:
+  enabled: false
+  mode: remote         # remote (servidor oficial de GitHub) o local (binario github-mcp-server)
+  repos: []            # p. ej. [tu-usuario/tu-repo]
+  toolsets: [repos, issues, pull_requests, actions]
+
+# Gmail y Calendar: se activan solos tras  python -m jarvis google login client_secret.json
+google:
+  enabled: true
+
+# Vigilante: revisa el correo y el calendario y te avisa por Telegram de lo urgente y de las reuniones.
+watcher:
+  enabled: true
+  interval_minutes: 5
+  meeting_alert_minutes: 15
+  triage: true         # usa el modelo rápido para decidir qué correos son urgentes
+
+# Tareas programadas y memoria (rutas relativas a esta carpeta).
+tasks_file: tasks.yaml          # copia tasks.example.yaml
+memory_file: memory/memoria.md     # tus preferencias y proyectos; Jarvis lo lee siempre
+
+# Vault de Obsidian SOLO de Jarvis: una carpeta nueva, nunca tu vault personal. Puedes abrirlo con Obsidian.
+# Jarvis escribe con aviso en su carpeta Jarvis/; cambiar cualquier otra nota te pide ✅.
+vault:
+  enabled: false
+  path: ~/JarvisVault
+
+# Voz: notas de voz en Telegram con Voicebox (app local, https://voicebox.sh). Abre Voicebox y crea un perfil de
+# voz con el nombre de 'profile' (una voz de serie o la tuya clonada). El audio no sale de tu PC.
+voice:
+  enabled: false
+  url: http://127.0.0.1:17493
+  profile: Jarvis
+  language: es
+  whisper_model: turbo      # base, small, medium, large o turbo
+  reply_with_voice: true    # a una nota de voz, contesta también con voz
+
+# Playbooks: flujos de negocio que se enchufan sin tocar el núcleo. Ver playbooks/README.md.
+# Los tuyos pueden vivir en otro repo (privado): apunta playbooks_dir a su carpeta.
+# playbooks_dir: ../jarvis-private/playbooks
+playbooks: {}
+#  mi_negocio:
+#    enabled: true
+#    settings: {}       # tus datos personales van aquí, nunca en el playbook.yaml del repo
+
+# Extensiones: módulos de Python que se enchufan al núcleo (comandos, herramientas, tareas). Ver
+# jarvis/extensions.py. Ejemplo con el repo privado instalado:  extensions: [mi_extension]
+extensions: []
+
+# Reglas propias por herramienta (opcional). Niveles: free, notify, approval, block.
+# No pueden desbloquear lo que Jarvis bloquea por diseño (Bash, rutas fuera de allowed_dirs).
+tool_rules: []
+#  - pattern: "mcp__github__create_branch"
+#    tier: notify

@@ -1,0 +1,16 @@
+# Plantilla de playbook. Copia esta carpeta como playbooks/<nombre_en_minusculas>/ y actívalo en jarvis.yaml:
+#   playbooks:
+#     <nombre>:
+#       enabled: true
+#       settings: {...}   # tus datos personales van aquí, no en este archivo
+title: Mi negocio
+description: Qué hace este playbook y para quién.
+
+# Claves del Administrador de credenciales que puede leer (python -m jarvis secrets set NOMBRE).
+secrets: []
+
+settings:
+  ejemplo: valor
+
+limits:
+  daily_budget_usd: 2.0

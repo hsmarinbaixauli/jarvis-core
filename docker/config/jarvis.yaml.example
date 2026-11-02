@@ -1,0 +1,65 @@
+# Configuración de Jarvis dentro de Docker. Copia este archivo como jarvis.yaml en esta misma carpeta
+# (docker/config/) y ajústalo. Las rutas son las de DENTRO del contenedor: no las cambies.
+# Las claves NO van aquí: docker compose run --rm jarvis secrets set NOMBRE
+
+owner:
+  name: Tu nombre            # para quién trabaja Jarvis (prompts y mensajes)
+  about: autónomo en España
+
+data_dir: /data              # volumen de Docker (base de datos, logs): no se ve desde Windows
+allowed_dirs:
+  - /work                    # tu carpeta JarvisTrabajo (JARVIS_WORK_DIR en .env)
+memory_file: /memory/memoria.md # tu carpeta de memoria (JARVIS_MEMORY_DIR en .env)
+
+# Vault de Obsidian solo de Jarvis (JARVIS_VAULT_DIR en .env). Escribe con aviso en Jarvis/; el resto, con ✅.
+vault:
+  enabled: true
+  path: /vault
+tasks_file: /config/tasks.yaml
+
+trusted_domains:
+  - github.com
+  - wikipedia.org
+
+telegram:
+  allowed_chat_id: null
+
+web:
+  port: 8765
+
+# El navegador vive en su propio contenedor. Inicias sesión en las cuentas de Jarvis por noVNC:
+#   docker compose --profile login run --rm --service-ports login
+browser:
+  enabled: true
+  mode: remote
+  url: http://browser:8931/mcp
+  channel: chromium
+  interact_domains: []
+
+github:
+  enabled: false
+  repos: []
+
+google:
+  enabled: true
+
+watcher:
+  enabled: true
+
+queue:
+  max_parallel: 2
+
+injection_check: confirm
+
+# Voz con Voicebox abierto en tu PC (fuera de Docker: necesita tu GPU). Ver docs/DOCKER.md, «Voz».
+voice:
+  enabled: false
+  url: http://host.docker.internal:17493
+  profile: Jarvis
+  language: es
+  whisper_model: turbo
+  reply_with_voice: true
+
+budget:
+  task_usd: 1.0
+  daily_usd: 10.0

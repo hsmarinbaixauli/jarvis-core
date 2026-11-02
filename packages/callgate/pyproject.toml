@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "callgate"
+version = "0.1.0"
+description = "A permission gate for AI agent tool calls: declared effects, approvals, audit, taint tracking and secret-exfiltration blocking."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+claude = ["claude-agent-sdk>=0.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+callgate = ["py.typed"]
